@@ -1,0 +1,29 @@
+﻿
+
+@{
+    ViewBag.Title = "Encryption Example";
+}
+
+<h2>Encryption Example</h2>
+
+<form action="/Test/EncryptMessage" method="post">
+    <label for="message">Message to Encrypt</label>
+    <input type="text" name="message" id="message" />
+    <input type="submit" value="Encrypt" />
+</form>
+
+@if (ViewBag.EncryptedMessage != null)
+{
+    <p><strong>Encrypted Message:</strong> @ViewBag.EncryptedMessage</p>
+}
+
+<form action="/Test/DecryptMessage" method="post">
+    <label for="encryptedMessage">Encrypted Message</label>
+    <input type="text" name="encryptedMessage" id="encryptedMessage" />
+    <input type="submit" value="Decrypt" />
+</form>
+
+@if (ViewBag.DecryptedMessage != null)
+{
+    <p><strong>Decrypted Message:</strong> @ViewBag.DecryptedMessage</p>
+}

@@ -1,0 +1,165 @@
+﻿@{
+    ViewBag.Title = "Home Page";
+}
+
+<script>
+    var publicKey = ''
+
+    function arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    }
+
+    // Convert a Base64 string to an ArrayBuffer
+    function base64ToArrayBuffer(base64) {
+        const binaryString = atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    async function getRsaKey() {
+        const keyBuffer = base64ToArrayBuffer(publicKey);
+        return await window.crypto.subtle.importKey(
+            'spki', // SubjectPublicKeyInfo format for PEM public keys
+            keyBuffer,
+            {
+                name: 'RSA-OAEP',
+                hash: 'SHA-256',
+            },
+            true, // Key can be exported again (optional)
+            ['encrypt']
+        );
+    }
+
+    async function encryptWithRsa(publicKey, plaintext) {
+        const encoded = new TextEncoder().encode(plaintext);
+        const encrypted = await window.crypto.subtle.encrypt(
+            {
+                name: 'RSA-OAEP',
+            },
+            publicKey,
+            encoded
+        );
+        return arrayBufferToBase64(encrypted);
+    }
+
+    async function encryptWithAES(plaintext) {
+        const aesKey = await window.crypto.subtle.generateKey(
+            {
+                name: "AES-GCM",
+                length: 256,
+            },
+            true, // extractable
+            ["encrypt", "decrypt"]
+        );
+
+        var iv = window.crypto.getRandomValues(new Uint8Array(12))
+
+        const ciphertext = await window.crypto.subtle.encrypt(
+            {
+                name: "AES-GCM",
+                iv: iv,
+            },
+            aesKey,
+            new TextEncoder().encode(plaintext)
+        );
+
+        // Return key, IV, and ciphertext (e.g., as Base64 strings for storage/transmission)
+        return {
+            key: await window.crypto.subtle.exportKey("jwk", aesKey), // Export key in JWK format
+            iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''), // Convert IV to hex string
+            ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertext))) // Convert ciphertext to Base64
+        };
+    }
+
+    $(document).ready(function () {
+        $.ajax({
+            type: 'GET',
+            url: '@Url.Action("GetPublicKey", "Home")',
+            success: (res) => {
+                debugger;
+                publicKey = res.publicKey;
+            },
+            error: () => {
+                alert("Some error occured while fetching the key");
+            }
+        })
+
+        $('#loginBtn').click(async function () {
+            var formData = new FormData($('#loginForm')[0]);
+            formData.delete('EncryptedMsg');
+            var obj = Object.fromEntries(formData.entries());
+            var jsonStrData = JSON.stringify(obj);
+
+            debugger;
+            var aesData = encryptWithAES(jsonStrData);
+
+            const key = await getRsaKey();
+            //var aesKey = await encryptWithRsa(key, (await aesData).key);
+            //var aesIv = await encryptWithRsa(key, (await aesData).iv);
+
+            var finalObj = {
+                formData: (await aesData).ciphertext,
+                aesKey: await encryptWithRsa(key, (await aesData).key),
+                aesIv: await encryptWithRsa(key, (await aesData).iv)
+            };
+
+            //const decryptedMessage = await decryptWithRsa(keyPair.privateKey, formData);
+            //console.log('Decrypted message:', decryptedMessage);
+
+            await $('#encryptedMsg').val(finalObj.formData + '~' + finalObj.aesKey + '~' + finalObj.aesIv);
+
+            await $('#loginForm').submit();
+        })
+    });
+
+</script>
+
+<div class="ui container">
+    @using (Html.BeginForm("Login", "Home", FormMethod.Post, new { @id = "loginForm", @class = "ui form" }))
+    {
+        <div class="ui two fields">
+            <div class="field">
+                <label for="acctNo">Account Number</label>
+                <input name="AcctNo" id="acctNo" />
+            </div>
+            <div class="field">
+                <label for="acctNo">Mobile Number</label>
+                <input name="MobileNo" id="mobileNo" />
+            </div>
+        </div>
+        <div class="ui two fields">
+            <div class="field">
+                <label for="custId">Customer Id</label>
+                <input name="CustId" id="custId" />
+            </div>
+            <div class="field">
+                <label for="panNo">PAN Number</label>
+                <input name="PanNo" id="panNo" />
+            </div>
+        </div>
+        <div class="ui two fields">
+            <div class="field">
+                <label for="dob">Date Of Birth</label>
+                <input name="Dob" id="dob" />
+            </div>
+            <div class="field">
+                <label for="captcha">Captcha</label>
+                <input name="captcha" id="captcha" />
+            </div>
+        </div>
+        <div class="field">
+            <input id="encryptedMsg" name="EncryptedMsg" type="hidden" />
+            <button type="button" class="ui primary button" id="loginBtn">Submit</button>
+        </div>
+    }
+</div>
